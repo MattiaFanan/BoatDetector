@@ -9,7 +9,7 @@ using namespace std;
 using namespace saliency;
 
 int main() {
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/01.jpg");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
     //cvtColor(img, img, COLOR_RGB2GRAY);
     /*
     Ptr<saliency::StaticSaliencyFineGrained> pointer = saliency::StaticSaliencyFineGrained::create();
@@ -30,12 +30,21 @@ int main() {
     vector<Vec4i> saliencyMap;
     vector<Vec4i> ROIs;
     Mat out;
-    Scalar color = Scalar(0,0, 255);
     img.copyTo(out);
+    Scalar color = Scalar(0,0, 255);
     saliencyAlgorithm.dynamicCast<ObjectnessBING>()->computeSaliency(out, ROIs);
 
-    for(Vec4i ROI : ROIs){
+    vector<float> score = saliencyAlgorithm.dynamicCast<ObjectnessBING>()->getobjectnessValues();
+
+
+    int max_det = 200;
+    for(ulong i = 0; i < max_det; i++){
+        Vec4i ROI = ROIs[i];
+        img.copyTo(out);
+        putText(out, to_string(score[i]), Point(ROI[0]+20, ROI[1]+20), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, color, 2, LINE_AA);
         rectangle(out, Point(ROI[0], ROI[1]), Point(ROI[2], ROI[3]), color);
+        imshow("TMP", out);
+        waitKey(0);
     }
 
     imshow("TMP", img);
