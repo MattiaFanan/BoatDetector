@@ -1,11 +1,12 @@
 #include <iostream>
-#include <opencv4/opencv2/saliency.hpp>
-#include <opencv4/opencv2/core.hpp>
-#include <opencv4/opencv2/highgui.hpp>
-#include <opencv4/opencv2/imgproc.hpp>
+#include <opencv2/saliency.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 using namespace cv;
 using namespace std;
+using namespace saliency;
 
 int main() {
     Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/01.jpg");
@@ -22,13 +23,16 @@ int main() {
     imshow("TMP", threshold_out);
     waitKey(0);
      */
-    Ptr<saliency::ObjectnessBING> pointer = saliency::ObjectnessBING::create();
-    pointer->setTrainingPath()
+    String training_path = "/home/mattia/Dev/OpenCV_installation/opencv_contrib-master/modules/saliency/samples/ObjectnessTrainedModel";
+    Ptr<Saliency> saliencyAlgorithm = ObjectnessBING::create();
+    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->setTrainingPath( training_path );
+    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->setBBResDir( "Results" );
+    vector<Vec4i> saliencyMap;
     vector<Vec4i> ROIs;
     Mat out;
     Scalar color = Scalar(0,0, 255);
     img.copyTo(out);
-    pointer->computeSaliency(img, ROIs);
+    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->computeSaliency(out, ROIs);
 
     for(Vec4i ROI : ROIs){
         rectangle(out, Point(ROI[0], ROI[1]), Point(ROI[2], ROI[3]), color);
