@@ -9,10 +9,10 @@ using namespace std;
 using namespace saliency;
 
 int main() {
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
-    //cvtColor(img, img, COLOR_RGB2GRAY);
-    /*
-    Ptr<saliency::StaticSaliencyFineGrained> pointer = saliency::StaticSaliencyFineGrained::create();
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/02.png");
+    cvtColor(img, img, COLOR_RGB2GRAY);
+    Ptr<saliency::StaticSaliencySpectralResidual> pointer = saliency::StaticSaliencySpectralResidual::create();
     Mat out;
     Mat threshold_out;
     pointer->computeSaliency(img, out);
@@ -22,34 +22,31 @@ int main() {
     waitKey(0);
     imshow("TMP", threshold_out);
     waitKey(0);
-     */
-    String training_path = "/home/mattia/Dev/OpenCV_installation/opencv_contrib-master/modules/saliency/samples/ObjectnessTrainedModel";
-    Ptr<Saliency> saliencyAlgorithm = ObjectnessBING::create();
-    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->setTrainingPath( training_path );
-    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->setBBResDir( "Results" );
-    vector<Vec4i> saliencyMap;
-    vector<Vec4i> ROIs;
-    Mat out;
-    img.copyTo(out);
-    Scalar color = Scalar(0,0, 255);
-    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->computeSaliency(out, ROIs);
 
-    vector<float> score = saliencyAlgorithm.dynamicCast<ObjectnessBING>()->getobjectnessValues();
+    /*
+    int erosion_size = 1;
+    Mat element = getStructuringElement( MORPH_RECT,Size( 2*erosion_size + 1, 2*erosion_size+1 ));
+    morphologyEx( threshold_out, threshold_out, MORPH_DILATE, element );
+    //erode(threshold_out,threshold_out,element);*/
 
 
-    int max_det = 200;
-    for(ulong i = 0; i < max_det; i++){
-        Vec4i ROI = ROIs[i];
-        img.copyTo(out);
-        putText(out, to_string(score[i]), Point(ROI[0]+20, ROI[1]+20), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, color, 2, LINE_AA);
-        rectangle(out, Point(ROI[0], ROI[1]), Point(ROI[2], ROI[3]), color);
-        imshow("TMP", out);
-        waitKey(0);
+    Mat labelImage, stat, centroid;
+    int nLabels = connectedComponentsWithStats(threshold_out, labelImage, stat,centroid,8);
+
+    std::vector<Vec3b> colors(nLabels);
+    colors[0] = Vec3b(0, 0, 0);//background
+    for(int label = 1; label < nLabels; ++label){
+        colors[label] = Vec3b( (rand()&255), (rand()&255), (rand()&255) );
     }
-
-    imshow("TMP", img);
-    waitKey(0);
-    imshow("TMP", out);
+    Mat dst(img.size(), CV_8UC3);
+    for(int r = 0; r < dst.rows; ++r){
+        for(int c = 0; c < dst.cols; ++c){
+            int label = labelImage.at<int>(r, c);
+            Vec3b &pixel = dst.at<Vec3b>(r, c);
+            pixel = colors[label];
+        }
+    }
+    imshow( "Connected Components", dst );
     waitKey(0);
     return 0;
 }
