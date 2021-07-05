@@ -10,12 +10,15 @@ using namespace saliency;
 
 int main() {
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/02.png");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/06.png");
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/01.jpg");
     cvtColor(img, img, COLOR_RGB2GRAY);
     Ptr<saliency::StaticSaliencySpectralResidual> pointer = saliency::StaticSaliencySpectralResidual::create();
     Mat out;
     Mat threshold_out;
     pointer->computeSaliency(img, out);
+    imshow("saliency", out);
+    waitKey(0);
     out.convertTo(out, CV_8UC1, 255);
     threshold(out, threshold_out, 0, 255, THRESH_BINARY | THRESH_OTSU);
     imshow("TMP", img);
@@ -29,7 +32,7 @@ int main() {
     morphologyEx( threshold_out, threshold_out, MORPH_DILATE, element );
     //erode(threshold_out,threshold_out,element);*/
 
-
+    /*
     Mat labelImage, stat, centroid;
     int nLabels = connectedComponentsWithStats(threshold_out, labelImage, stat,centroid,8);
 
@@ -48,5 +51,6 @@ int main() {
     }
     imshow( "Connected Components", dst );
     waitKey(0);
+    */
     return 0;
 }
