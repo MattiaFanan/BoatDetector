@@ -1,43 +1,39 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
-#include <opencv2/core/types.hpp>
+#include <opencv2/ximgproc/segmentation.hpp>
+#include <opencv2/imgproc.hpp>
 
 using namespace cv;
 using namespace std;
+using namespace ximgproc::segmentation;
 
 int main() {
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
     Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/05.png");
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/01.jpg");
     imshow("origin", img);
-    // convert to float & reshape to a [3 x W*H] Mat
-    //  (so every pixel is on a row of it's own)
-    Mat data;
-    img.convertTo(data,CV_32F);
-    data = data.reshape(1,data.total());
-    int numLabels = 8;
-    // do kmeans
-    Mat labels, centers;
-    kmeans(data, numLabels, labels, TermCriteria(TermCriteria::MAX_ITER, 10, 1.0), 3,
-           KMEANS_PP_CENTERS, centers);
 
-    // reshape both to a single row of Vec3f pixels:
-    centers = centers.reshape(3,centers.rows);
-    data = data.reshape(3,data.rows);
+    Mat out;
+    vector<Rect> ROIs;
+    Scalar color = Scalar(0,255,0);
+    double sigma=0.5;
+    float k=300;
+    int min_size=100;
+    Ptr<SelectiveSearchSegmentation> segmenter = createSelectiveSearchSegmentation();
+    segmenter->clearStrategies();
+    segmenter->addStrategy(createSelectiveSearchSegmentationStrategyTexture());
+    segmenter->setBaseImage(img);
+    segmenter->switchToSingleStrategy();
 
-    // replace pixel values with their center value:
-    Vec3f *p = data.ptr<Vec3f>();
-    for (size_t i=0; i<data.rows; i++) {
-        int center_id = labels.at<int>(i);
-        p[i] = centers.at<Vec3f>(center_id);
+    segmenter->process(ROIs);
+
+    int max_det = 200;
+    for(ulong i = 0; i < max_det; i++){
+        img.copyTo(out);
+        rectangle(out,ROIs[i],color,2);
+        imshow("TMP", out);
+        waitKey(0);
     }
-
-    // back to 2d, and uchar:
-    img = data.reshape(3, img.rows);
-    img.convertTo(img, CV_8U);
-
-    imshow("segmented", img);
-    waitKey(0);
 
     return 0;
 }
