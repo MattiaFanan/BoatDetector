@@ -48,23 +48,27 @@ int main() {
     }
     imshow( "Connected Components", dst );
 
-    /*
-    int max_det = 200;
+    // ROIs
+    int min_area=200;
+    vector<Rect> ROIs;
+    for(int i=0; i < nLabels; i++){
+        if(stat.at<int>(i,CC_STAT_AREA) >= min_area) {
+            int x = stat.at<int>(i, CC_STAT_LEFT);
+            int y = stat.at<int>(i, CC_STAT_TOP);
+            int w = stat.at<int>(i, CC_STAT_WIDTH);
+            int h = stat.at<int>(i, CC_STAT_HEIGHT);
+            ROIs.push_back(Rect(x,y,w,h));
+        }
+    }
+    Scalar color= Scalar(0,255,0);
+    int max_det = ROIs.size();
+    Mat tmp;
     for(ulong i = 0; i < max_det; i++){
-        Vec4i ROI = ROIs[i];
-        img.copyTo(img_seg);
-        putText(img_seg, to_string(score[i]), Point(ROI[0]+20, ROI[1]+20), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, color, 2, LINE_AA);
-        rectangle(img_seg, Point(ROI[0], ROI[1]), Point(ROI[2], ROI[3]), color);
-        imshow("TMP", img_seg);
+        img.copyTo(tmp);
+        rectangle(tmp, ROIs[i], color);
+        imshow("TMP", tmp);
         waitKey(0);
     }
-
-    imshow("TMP", img);
-    waitKey(0);
-    imshow("TMP", img_seg);
-    waitKey(0);
-     */
-
-    waitKey(0);
+    destroyAllWindows();
     return 0;
 }
