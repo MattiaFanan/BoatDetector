@@ -3,17 +3,26 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <X11/Xlib.h>
 
 using namespace cv;
 using namespace std;
 using namespace hfs;
+
 bool doOverlap(const Rect& rec1, const Rect& rec2, int slack);
+vector<vector<Rect>> proposedRegions(const vector<Rect> &zeroLevel, int max_dist, int maxLevel);
+vector<Rect> ROIsFromStat(const Mat &stat, int nLabels, int minArea);
+
 int main() {
-    namedWindow("merge",WINDOW_NORMAL);
+    Display* disp = XOpenDisplay(NULL);
+    Screen*  scrn = DefaultScreenOfDisplay(disp);
+
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image3215.png");
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/01.jpg");
     Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/05.png");
+    resize(img,img,Size(scrn->width - 100,scrn->height - 100));
     imshow("orig",img);
+    waitKey(0);
 
     Ptr<HfsSegment> segm = HfsSegment::create(img.rows, img.cols);
 
@@ -51,49 +60,23 @@ int main() {
 
 
     // ROIs
-    int min_area=200;
-    vector<Rect> ROIs;
-    for(int i=0; i < nLabels; i++){
-        if(stat.at<int>(i,CC_STAT_AREA) >= min_area) {
-            int x = stat.at<int>(i, CC_STAT_LEFT);
-            int y = stat.at<int>(i, CC_STAT_TOP);
-            int w = stat.at<int>(i, CC_STAT_WIDTH);
-            int h = stat.at<int>(i, CC_STAT_HEIGHT);
-            ROIs.push_back(Rect(x,y,w,h));
-        }
-    }
-    Scalar color= Scalar(0,255,0);
+    int minArea = 200;
+    int maxDist = 50;
+    int maxLevel = 4;
+    vector<Rect> zeroLevel = ROIsFromStat(stat, nLabels, minArea);
+    vector<vector<Rect>> levelStack = proposedRegions(zeroLevel, maxDist, maxLevel);
+    Scalar color= Scalar(0,0,255);
     Mat tmp;
-    /*
-    for(auto &ROI : ROIs){
-        img.copyTo(tmp);
-        rectangle(tmp, ROI, color);
-        imshow("TMP", tmp);
-        waitKey(0);
-    }
-     */
-
-    //merge ROIs
-    Mat merg;
-    int max_dist = 50;
-    int index=81;
-    Rect principal = ROIs[index];
-    img.copyTo(merg);
-    rectangle(merg, principal, color);
-    for(int i=0; i<ROIs.size(); i++){
-        if(i==index) continue;
-        merg.copyTo(tmp);
-        rectangle(tmp, ROIs[i], color);
-        Rect ROI = ROIs[i];
-        if(doOverlap(principal, ROI, max_dist)){
-            Point newUpLeft = Point(min(principal.x, ROI.x), min(principal.y, ROI.y));
-            Point newDownRight = Point(max(principal.x + principal.width, ROI.x + ROI.width),
-                                       max(principal.y + principal.height, ROI.y + ROI.height));
-            Rect newROI = Rect(newUpLeft,newDownRight);
-            rectangle(tmp, newROI, Scalar(0,0,255));
+    int level = 0;
+    for(auto &ROIs : levelStack){
+        for(auto &ROI : ROIs) {
+            img.copyTo(tmp);
+            putText(tmp, to_string(level), Point(50,50),FONT_HERSHEY_SCRIPT_SIMPLEX,0.5,color,2);
+            rectangle(tmp, ROI, color,2);
+            imshow("ROIs", tmp);
+            waitKey(0);
         }
-        imshow("merge", tmp);
-        waitKey(0);
+        level++;
     }
 
     waitKey(0);
@@ -127,4 +110,50 @@ bool doOverlap(const Rect& rec1, const Rect& rec2, int slack)
         return false;
 
     return true;
+}
+
+vector<vector<Rect>> proposedRegions(const vector<Rect> &zeroLevel, int max_dist, int maxLevel){
+    vector<vector<Rect>> levelStack;
+    levelStack.push_back(zeroLevel);
+
+    for(int toMergeLevel=0; toMergeLevel < maxLevel; toMergeLevel++){
+        vector<Rect> newLevel;
+        vector<Rect> currentLevel = levelStack[toMergeLevel];
+        for(int i=0; i < currentLevel.size(); i++) {
+            Rect pivotROI = currentLevel[i];
+            for(int j= i + 1; j < currentLevel.size(); j++){
+                Rect currentROI = currentLevel[j];
+                if (doOverlap(pivotROI, currentROI, max_dist)) {
+                    //the rect union of two rect has as top left the min of the top left points
+                    //and as bottom right the max of the bottom right points
+                    Point newUpLeft = Point(min(pivotROI.x, currentROI.x), min(pivotROI.y, currentROI.y));
+                    Point newDownRight = Point(max(pivotROI.x + pivotROI.width, currentROI.x + currentROI.width),
+                                           max(pivotROI.y + pivotROI.height, currentROI.y + currentROI.height));
+                    //add the new ROI
+                    Rect newROI = Rect(newUpLeft, newDownRight);
+                    newLevel.push_back(newROI);
+                }
+            }
+        }
+        //exit if no new levels generated
+        if(newLevel.empty())
+            break;
+
+        levelStack.push_back(newLevel);
+    }
+    return levelStack;
+}
+
+vector<Rect> ROIsFromStat(const Mat &stat, int nLabels, int minArea){
+    vector<Rect> ROIs;
+    for(int i=0; i < nLabels; i++){
+        if(stat.at<int>(i,CC_STAT_AREA) >= minArea) {
+            int x = stat.at<int>(i, CC_STAT_LEFT);
+            int y = stat.at<int>(i, CC_STAT_TOP);
+            int w = stat.at<int>(i, CC_STAT_WIDTH);
+            int h = stat.at<int>(i, CC_STAT_HEIGHT);
+            ROIs.push_back(Rect(x,y,w,h));
+        }
+    }
+    return ROIs;
 }
