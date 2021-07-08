@@ -1,55 +1,70 @@
 #include <iostream>
-#include <opencv2/saliency.hpp>
+#include <opencv2/hfs.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
 using namespace cv;
 using namespace std;
-using namespace saliency;
+using namespace hfs;
 
 int main() {
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
-    //cvtColor(img, img, COLOR_RGB2GRAY);
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0147.png");
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/01.jpg");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/05.png");
+    imshow("orig",img);
+
+    Ptr<HfsSegment> segm = HfsSegment::create(img.rows, img.cols);
+
+    //segmentation
+    Mat img_seg = segm->performSegmentCpu(img);
+    imshow("img_seg", img_seg);
+
+    //edges
+    int thresh=0;
+    Mat edges;
+    Canny(img_seg, edges, thresh, 3 * thresh);
+    imshow("edges",edges);
+
+    //connected components
+    Mat conn;
+    bitwise_not(edges,conn);
+    erode(conn,conn, getStructuringElement(MORPH_RECT,Size(3,3)));
+
+    Mat labelImage, stat, centroid;
+    int nLabels = connectedComponentsWithStats(conn, labelImage, stat, centroid, 8);
+    std::vector<Vec3b> colors(nLabels);
+    colors[0] = Vec3b(0, 0, 0);//background
+    for(int label = 1; label < nLabels; ++label){
+        colors[label] = Vec3b( (rand()&255), (rand()&255), (rand()&255) );
+    }
+    Mat dst(img.size(), CV_8UC3);
+    for(int r = 0; r < dst.rows; ++r){
+        for(int c = 0; c < dst.cols; ++c){
+            int label = labelImage.at<int>(r, c);
+            Vec3b &pixel = dst.at<Vec3b>(r, c);
+            pixel = colors[label];
+        }
+    }
+    imshow( "Connected Components", dst );
+
     /*
-    Ptr<saliency::StaticSaliencyFineGrained> pointer = saliency::StaticSaliencyFineGrained::create();
-    Mat out;
-    Mat threshold_out;
-    pointer->computeSaliency(img, out);
-    out.convertTo(out, CV_8UC1, 255);
-    threshold(out, threshold_out, 0, 255, THRESH_BINARY | THRESH_OTSU);
-    imshow("TMP", img);
-    waitKey(0);
-    imshow("TMP", threshold_out);
-    waitKey(0);
-     */
-    String training_path = "/home/mattia/Dev/OpenCV_installation/opencv_contrib-master/modules/saliency/samples/ObjectnessTrainedModel";
-    Ptr<Saliency> saliencyAlgorithm = ObjectnessBING::create();
-    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->setTrainingPath( training_path );
-    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->setBBResDir( "Results" );
-    vector<Vec4i> saliencyMap;
-    vector<Vec4i> ROIs;
-    Mat out;
-    img.copyTo(out);
-    Scalar color = Scalar(0,0, 255);
-    saliencyAlgorithm.dynamicCast<ObjectnessBING>()->computeSaliency(out, ROIs);
-
-    vector<float> score = saliencyAlgorithm.dynamicCast<ObjectnessBING>()->getobjectnessValues();
-
-
     int max_det = 200;
     for(ulong i = 0; i < max_det; i++){
         Vec4i ROI = ROIs[i];
-        img.copyTo(out);
-        putText(out, to_string(score[i]), Point(ROI[0]+20, ROI[1]+20), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, color, 2, LINE_AA);
-        rectangle(out, Point(ROI[0], ROI[1]), Point(ROI[2], ROI[3]), color);
-        imshow("TMP", out);
+        img.copyTo(img_seg);
+        putText(img_seg, to_string(score[i]), Point(ROI[0]+20, ROI[1]+20), FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, color, 2, LINE_AA);
+        rectangle(img_seg, Point(ROI[0], ROI[1]), Point(ROI[2], ROI[3]), color);
+        imshow("TMP", img_seg);
         waitKey(0);
     }
 
     imshow("TMP", img);
     waitKey(0);
-    imshow("TMP", out);
+    imshow("TMP", img_seg);
+    waitKey(0);
+     */
+
     waitKey(0);
     return 0;
 }
