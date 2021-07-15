@@ -3,6 +3,7 @@
 #include <opencv2/imgproc.hpp>
 #include<opencv2/ximgproc/edgeboxes.hpp>
 #include<opencv2/ximgproc.hpp>
+#include <opencv2/objdetect.hpp>
 #include <X11/Xlib.h>
 #include <opencv2/dnn/dnn.hpp>
 #include <iostream>
@@ -18,14 +19,14 @@ bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
 int main() {
     Display* disp = XOpenDisplay(NULL);
     Screen*  scrn = DefaultScreenOfDisplay(disp);
-    Net net = readNetFromTensorflow("/home/mattia/CLionProjects/CV/BoatDetector/models/sp_over_se_model.pb"); //Load the model
+    Net net = readNetFromTensorflow("/home/mattia/CLionProjects/CV/BoatDetector/models/parts_sp_over_se_model.pb"); //Load the model
 
     net.setPreferableBackend(DNN_BACKEND_DEFAULT);
     net.setPreferableTarget(DNN_TARGET_CPU);
 
-    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image3161.png");
-    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/10.jpg");
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/07.png");
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image3200.png");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/10.jpg");
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/11.png");
     resize(img,img,Size(scrn->width - 100,scrn->height - 100));
 
     Mat tmp;
@@ -43,12 +44,13 @@ int main() {
     boxes->getBoundingBoxes(suppEdges,orient,ROIs);
 
     //similar ROIs removal
-    double dimensionSlackPerc = 0.1;
+    double dimensionSlackPerc = 0.05;
     ROIs = removeDuplicates(ROIs, dimensionSlackPerc);
+    cout << ROIs.size() << endl;
 
     //classification
     vector<float> scores;
-    for(Rect ROI : ROIs){
+    for(const Rect& ROI : ROIs){
         Mat input = img(ROI);
         vector<Mat> out;
         input = blobFromImage(input,1.0/255,Size(100,100),Scalar(),false,false,CV_32F);
@@ -58,7 +60,7 @@ int main() {
     }
 
     // non maxima suppression
-    float score_thresh = 0.8;
+    float score_thresh = 0.7;
     float nms_thresh = 0.1;
     vector<int> keptIndices;
     NMSBoxes(ROIs,scores,score_thresh,nms_thresh,keptIndices);
