@@ -3,10 +3,14 @@
 #include <opencv2/imgproc.hpp>
 #include<opencv2/ximgproc/edgeboxes.hpp>
 #include<opencv2/ximgproc.hpp>
-#include <opencv2/objdetect.hpp>
 #include <X11/Xlib.h>
 #include <opencv2/dnn/dnn.hpp>
 #include <iostream>
+#include <fstream>
+#include <string>
+#include <iostream>
+#include <regex>
+
 
 using namespace cv;
 using namespace std;
@@ -15,19 +19,28 @@ using namespace dnn;
 
 vector<Rect> removeDuplicates(const vector<Rect> &input, double dimensionSlackPerc);
 bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
+vector<Rect> parseFile(const string& fileName);
 
 int main() {
+    // image full screen
     Display* disp = XOpenDisplay(NULL);
     Screen*  scrn = DefaultScreenOfDisplay(disp);
-    Net net = readNetFromTensorflow("/home/mattia/CLionProjects/CV/BoatDetector/models/parts_sp_over_se_model.pb"); //Load the model
 
+    //read CNN
+    Net net = readNetFromTensorflow("/home/mattia/CLionProjects/CV/BoatDetector/models/parts_sp_over_se_model.pb"); //Load the model
     net.setPreferableBackend(DNN_BACKEND_DEFAULT);
     net.setPreferableTarget(DNN_TARGET_CPU);
 
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image3200.png");
     Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/10.jpg");
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/11.png");
-    resize(img,img,Size(scrn->width - 100,scrn->height - 100));
+
+
+
+    //read ground truth
+    string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle_labels_txt/10.txt");
+    vector<Rect> groundTruth = parseFile(fileName);
+
 
     Mat tmp;
     img.convertTo(tmp,CV_32FC3,1/255.0);
@@ -71,6 +84,13 @@ int main() {
         putText(img, to_string(scores[i]),ROIs[i].tl() + Point(20,20),FONT_HERSHEY_SCRIPT_SIMPLEX,0.5,color);
         rectangle(img, ROIs[i], color,2);
     }
+
+    //draw ground truth
+    for(auto &ROI : groundTruth){
+        rectangle(img, ROI, Scalar(0,0,255),2);
+    }
+
+    resize(img,img,Size(scrn->width - 100,scrn->height - 100));
     imshow("detection",img);
     waitKey(0);
     return 0;
@@ -120,4 +140,34 @@ bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc){
         return false;
 
     return true;
+}
+
+vector<Rect> parseFile(const string& fileName){
+    vector<Rect> ROIs;
+    ifstream inFile;
+    inFile.open(fileName);
+    if (!inFile) {
+        cerr << "Unable to open file datafile.txt";
+        exit(1);   // call system to stop
+    }
+
+    string textRow;
+    regex e(R"(\d+)");
+    while(inFile >> textRow) {
+        sregex_iterator iter = sregex_iterator(textRow.cbegin(), textRow.cend(), e);
+        sregex_iterator end;
+
+        vector<int> num;
+        for (; iter != end; ++iter)
+            num.push_back(stoi(iter->str()));
+        if(num.size()!=4) {
+            cerr <<"error parsing ROIs file: one ROI hasn't exactly 4 integers";
+            exit(1);
+        }
+        //0 xmin; 1 xmax; 2 ymin; 3 ymax
+        ROIs.emplace_back(num[0],num[2], num[1]-num[0],num[3]-num[2]);
+
+    }
+    inFile.close();
+    return ROIs;
 }
