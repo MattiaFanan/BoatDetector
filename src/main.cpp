@@ -21,6 +21,8 @@ vector<Rect> removeDuplicates(const vector<Rect> &input, double dimensionSlackPe
 bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
 vector<Rect> parseFile(const string& fileName);
 float IoU(const Rect &r1, const Rect &r2);
+float IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
+vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector);
 
 int main() {
     // image full screen
@@ -32,64 +34,40 @@ int main() {
     net.setPreferableBackend(DNN_BACKEND_DEFAULT);
     net.setPreferableTarget(DNN_TARGET_CPU);
 
+    //read edge detector
+    Ptr<StructuredEdgeDetection> edgeDetector = createStructuredEdgeDetection("/home/mattia/Downloads/model.yml.gz");
+
+    //build edgebox
+    Ptr<EdgeBoxes> boxesDetector = createEdgeBoxes();
+
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image3200.png");
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/10.jpg");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/09.jpg");
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/11.png");
 
 
 
     //read ground truth
-    string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle_labels_txt/10.txt");
+    string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle_labels_txt/09.txt");
     vector<Rect> groundTruth = parseFile(fileName);
 
+    //detect
+    vector<Rect> ROIs = detect(img,net,edgeDetector,boxesDetector);
 
-    Mat tmp;
-    img.convertTo(tmp,CV_32FC3,1/255.0);
-    Mat edges,orient,suppEdges;
-    Ptr<StructuredEdgeDetection> edgeDetector = createStructuredEdgeDetection("/home/mattia/Downloads/model.yml.gz");
-    edgeDetector->detectEdges(tmp,edges);
-    edgeDetector->computeOrientation(edges,orient);
-    //edge suppression
-    edgeDetector->edgesNms(edges,orient,suppEdges);
-
-    vector<Rect> ROIs;
-    Ptr<EdgeBoxes> boxes = createEdgeBoxes();
-    //boxes->setMaxBoxes(30);
-    boxes->getBoundingBoxes(suppEdges,orient,ROIs);
-
-    //similar ROIs removal
-    double dimensionSlackPerc = 0.05;
-    ROIs = removeDuplicates(ROIs, dimensionSlackPerc);
-    cout << ROIs.size() << endl;
-
-    //classification
-    vector<float> scores;
-    for(const Rect& ROI : ROIs){
-        Mat input = img(ROI);
-        vector<Mat> out;
-        input = blobFromImage(input,1.0/255,Size(100,100),Scalar(),false,false,CV_32F);
-        net.setInput(input);
-        net.forward(out);
-        scores.push_back(out.at(0).at<float>(0,0));
-    }
-
-    // non maxima suppression
-    float score_thresh = 0.7;
-    float nms_thresh = 0.1;
-    vector<int> keptIndices;
-    NMSBoxes(ROIs,scores,score_thresh,nms_thresh,keptIndices);
 
     //draw regions
-    Scalar color = Scalar(0,255,0);
-    for(int i : keptIndices){
-        putText(img, to_string(scores[i]),ROIs[i].tl() + Point(20,20),FONT_HERSHEY_SCRIPT_SIMPLEX,0.5,color);
-        rectangle(img, ROIs[i], color,2);
+    Scalar colorDec = Scalar(0,0,255); //red
+    Scalar colorGT = Scalar(0,255,0); //green
+
+    for(auto& ROI : ROIs){
+        rectangle(img, ROI, colorDec, 2);
     }
 
     //draw ground truth
     for(auto &ROI : groundTruth){
-        rectangle(img, ROI, Scalar(0,0,255),2);
+        rectangle(img, ROI, colorGT, 2);
     }
+
+    float iou = 0;
 
     resize(img,img,Size(scrn->width - 100,scrn->height - 100));
     imshow("detection",img);
@@ -182,5 +160,63 @@ float IoU(const Rect &r1, const Rect &r2){
     //compute the area of intersection rectangle
     int interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1);
 
-    return interArea / float( r1.area() + r2.area() - interArea);
+    return float(interArea) / float( r1.area() + r2.area() - interArea);
+}
+
+float IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection){
+    //Mat pairIoU = Mat(static_cast<int>(groundTruth.size()), static_cast<int>(detection.size()), CV_32F);
+    float best[groundTruth.size()];
+    for (int i=0; i<groundTruth.size(); i++) {
+        for (int j = 0; j < detection.size(); j++) {
+            float newIoU = IoU(groundTruth[i], detection[j]);
+            if (newIoU > best[j])
+                best[j] = newIoU;
+        }
+    }
+    float sum=0;
+    for (float val : best)
+        sum += val;
+    return sum/float(groundTruth.size());
+}
+vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector){
+    vector<Rect> ROIs;
+    Mat tmp;
+    //normalize and copy img
+    img.convertTo(tmp,CV_32FC3,1/255.0);
+
+    //#//find regions of interest
+    Mat edges,orient,suppEdges;
+    edgeDetector->detectEdges(tmp,edges);
+    edgeDetector->computeOrientation(edges,orient);
+    //edge suppression
+    edgeDetector->edgesNms(edges,orient,suppEdges);
+    // save ROIs
+    boxesDetector->getBoundingBoxes(suppEdges,orient,ROIs);
+
+    //similar ROIs removal
+    double dimensionSlackPerc = 0.05;
+    ROIs = removeDuplicates(ROIs, dimensionSlackPerc);
+
+    //classification
+    vector<float> scores;
+    for(const Rect& ROI : ROIs){
+        Mat input = tmp(ROI);
+        vector<Mat> out;
+        input = blobFromImage(input,1.0,Size(100,100),Scalar(),false,false,CV_32F);
+        net.setInput(input);
+        net.forward(out);
+        scores.push_back(out.at(0).at<float>(0,0));
+    }
+
+    // non maxima suppression
+    float score_thresh = 0.8;
+    float nms_thresh = 0.1;
+    vector<int> keptIndices;
+    NMSBoxes(ROIs,scores,score_thresh,nms_thresh,keptIndices);
+
+    vector<Rect> output;
+    for(int i : keptIndices)
+        output.push_back(ROIs[i]);
+
+    return output;
 }
