@@ -20,6 +20,7 @@ using namespace dnn;
 vector<Rect> removeDuplicates(const vector<Rect> &input, double dimensionSlackPerc);
 bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
 vector<Rect> parseFile(const string& fileName);
+float IoU(const Rect &r1, const Rect &r2);
 
 int main() {
     // image full screen
@@ -165,9 +166,21 @@ vector<Rect> parseFile(const string& fileName){
             exit(1);
         }
         //0 xmin; 1 xmax; 2 ymin; 3 ymax
-        ROIs.emplace_back(num[0],num[2], num[1]-num[0],num[3]-num[2]);
+        ROIs.emplace_back(num[0],num[2], num[1] - num[0] + 1,num[3] - num[2] + 1);
 
     }
     inFile.close();
     return ROIs;
+}
+
+float IoU(const Rect &r1, const Rect &r2){
+    //determine the (x, y)-coordinates of the intersection rectangle
+    int xA = max(r1.tl().x, r2.tl().x);
+    int yA = max(r1.tl().y, r2.tl().y);
+    int xB = min(r1.br().x, r2.br().x);
+    int yB = min(r1.tl().y, r2.tl().y);
+    //compute the area of intersection rectangle
+    int interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1);
+
+    return interArea / float( r1.area() + r2.area() - interArea);
 }
