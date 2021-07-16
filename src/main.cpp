@@ -8,8 +8,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <iostream>
 #include <regex>
+#include <Hungarian.h>
 
 
 using namespace cv;
@@ -20,8 +20,8 @@ using namespace dnn;
 vector<Rect> removeDuplicates(const vector<Rect> &input, double dimensionSlackPerc);
 bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
 vector<Rect> parseFile(const string& fileName);
-float IoU(const Rect &r1, const Rect &r2);
-float IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
+double IoU(const Rect &r1, const Rect &r2);
+double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
 vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector);
 
 int main() {
@@ -40,14 +40,16 @@ int main() {
     //build edgebox
     Ptr<EdgeBoxes> boxesDetector = createEdgeBoxes();
 
-    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image3200.png");
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/09.jpg");
+    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0081.png");
+    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/07.jpg");
     //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/11.png");
 
 
 
     //read ground truth
-    string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle_labels_txt/09.txt");
+    string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/LABELS_TXT/image0081.txt");
+    //string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle_labels_txt/07.txt");
+    //string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice_labels_txt/07.txt");
     vector<Rect> groundTruth = parseFile(fileName);
 
     //detect
@@ -67,7 +69,7 @@ int main() {
         rectangle(img, ROI, colorGT, 2);
     }
 
-    float iou = 0;
+    cout << IoUScore(groundTruth,ROIs) << endl;
 
     resize(img,img,Size(scrn->width - 100,scrn->height - 100));
     imshow("detection",img);
@@ -151,33 +153,45 @@ vector<Rect> parseFile(const string& fileName){
     return ROIs;
 }
 
-float IoU(const Rect &r1, const Rect &r2){
+double IoU(const Rect &r1, const Rect &r2){
     //determine the (x, y)-coordinates of the intersection rectangle
     int xA = max(r1.tl().x, r2.tl().x);
     int yA = max(r1.tl().y, r2.tl().y);
     int xB = min(r1.br().x, r2.br().x);
-    int yB = min(r1.tl().y, r2.tl().y);
+    int yB = min(r1.br().y, r2.br().y);
     //compute the area of intersection rectangle
     int interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1);
 
-    return float(interArea) / float( r1.area() + r2.area() - interArea);
+    return interArea / ( r1.area() + r2.area() - interArea + 1.0e-16);
 }
 
-float IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection){
+double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection) {
     //Mat pairIoU = Mat(static_cast<int>(groundTruth.size()), static_cast<int>(detection.size()), CV_32F);
-    float best[groundTruth.size()];
-    for (int i=0; i<groundTruth.size(); i++) {
-        for (int j = 0; j < detection.size(); j++) {
-            float newIoU = IoU(groundTruth[i], detection[j]);
-            if (newIoU > best[j])
-                best[j] = newIoU;
+    if (groundTruth.empty())
+        return 0;
+
+    int dim = static_cast<int>(max(groundTruth.size(), detection.size()));
+
+    vector<vector<double>> costs;
+    for (int i = 0; i < dim; i++) {
+        vector<double> gtCosts;
+        for (int j = 0; j < dim; j++) {
+            if (i < groundTruth.size() && j < detection.size())
+                gtCosts.push_back(1.0 - IoU(groundTruth[i], detection[j]));
+            else
+                gtCosts.push_back(1.0);
         }
+        costs.push_back(gtCosts);
     }
-    float sum=0;
-    for (float val : best)
-        sum += val;
-    return sum/float(groundTruth.size());
+
+    vector<int> assignments;
+    HungarianAlgorithm HungAlgo;
+    double sum = HungAlgo.Solve(costs, assignments);
+    sum = 1 - sum / dim;
+    return sum;
 }
+
+
 vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector){
     vector<Rect> ROIs;
     Mat tmp;
