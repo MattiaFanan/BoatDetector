@@ -10,6 +10,8 @@
 #include <string>
 #include <regex>
 #include <Hungarian.h>
+#include <utility>
+#include <dirent.h>
 
 
 using namespace cv;
@@ -23,57 +25,63 @@ vector<Rect> parseFile(const string& fileName);
 double IoU(const Rect &r1, const Rect &r2);
 double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
 vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector);
+vector<pair<string,string>> pairFiles(const vector<string>& image_names, const vector<string>& gt_names);
+vector<pair<string,string>> getNames(const string& imagePath, const string& gtPath);
 
-int main() {
+int main(int argc, char *argv[]) {
+
+    //acquire paths from input
+    if (argc != 3){
+        cerr << "2 parameters allowed: images_path, ground_truth_path" << endl;
+        exit(1);
+    }
+    string imgPath = string(argv[1]);
+    string gtPath = string(argv[2]);
+
     // image full screen
-    Display* disp = XOpenDisplay(NULL);
+    Display* disp = XOpenDisplay(nullptr);
     Screen*  scrn = DefaultScreenOfDisplay(disp);
 
     //read CNN
-    Net net = readNetFromTensorflow("/home/mattia/CLionProjects/CV/BoatDetector/models/parts_sp_over_se_model.pb"); //Load the model
+    Net net = readNetFromTensorflow("../../models/parts_sp_over_se_model.pb"); //Load the model
     net.setPreferableBackend(DNN_BACKEND_DEFAULT);
     net.setPreferableTarget(DNN_TARGET_CPU);
-
     //read edge detector
-    Ptr<StructuredEdgeDetection> edgeDetector = createStructuredEdgeDetection("/home/mattia/Downloads/model.yml.gz");
-
+    Ptr<StructuredEdgeDetection> edgeDetector = createStructuredEdgeDetection("../../EdgeModel/model.yml.gz");
     //build edgebox
     Ptr<EdgeBoxes> boxesDetector = createEdgeBoxes();
 
-    Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/IMAGES/image0081.png");
-    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle/07.jpg");
-    //Mat img = imread("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice/11.png");
+    //get pairs of image,ground truth files
+    vector<pair<string,string>> names= getNames(imgPath, gtPath);
 
+    for(auto& name : names) {
 
+        //detect
+        Mat img = imread(imgPath + name.first);
+        vector<Rect> ROIs = detect(img, net, edgeDetector, boxesDetector);
+        //read ground truth
+        vector<Rect> groundTruth;
+        if(!name.second.empty())
+            groundTruth = parseFile(gtPath + name.second);
 
-    //read ground truth
-    string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TRAINING_DATASET/LABELS_TXT/image0081.txt");
-    //string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/kaggle_labels_txt/07.txt");
-    //string fileName = string("/home/mattia/CLionProjects/CV/BoatDetector/FINAL_DATASET/TEST_DATASET/venice_labels_txt/07.txt");
-    vector<Rect> groundTruth = parseFile(fileName);
+        //draw regions
+        Scalar colorDec = Scalar(0, 0, 255); //red
+        Scalar colorGT = Scalar(0, 255, 0); //green
+        for (auto &ROI : ROIs) {
+            rectangle(img, ROI, colorDec, 2);
+        }
+        //draw ground truth
+        for (auto &ROI : groundTruth) {
+            rectangle(img, ROI, colorGT, 2);
+        }
 
-    //detect
-    vector<Rect> ROIs = detect(img,net,edgeDetector,boxesDetector);
+        cout << name.first << " got an IoU score of " << IoUScore(groundTruth, ROIs) << endl;
 
-
-    //draw regions
-    Scalar colorDec = Scalar(0,0,255); //red
-    Scalar colorGT = Scalar(0,255,0); //green
-
-    for(auto& ROI : ROIs){
-        rectangle(img, ROI, colorDec, 2);
+        resize(img, img, Size(scrn->width - 100, scrn->height - 100));
+        imshow("detection", img);
+        waitKey(0);
     }
 
-    //draw ground truth
-    for(auto &ROI : groundTruth){
-        rectangle(img, ROI, colorGT, 2);
-    }
-
-    cout << IoUScore(groundTruth,ROIs) << endl;
-
-    resize(img,img,Size(scrn->width - 100,scrn->height - 100));
-    imshow("detection",img);
-    waitKey(0);
     return 0;
 }
 
@@ -233,4 +241,54 @@ vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>&
         output.push_back(ROIs[i]);
 
     return output;
+}
+
+vector<pair<string,string>> pairFiles(const vector<string>& image_names, const vector<string>& gt_names){
+    vector<pair<string,string>> out;
+
+    for(auto& image : image_names){
+        string img_raw = image.substr(0, image.find_last_of('.'));
+        pair<string,string> p = pair<string,string>(image, string());
+        for(auto& gt : gt_names){
+            string gt_raw = gt.substr(0, gt.find_last_of('.'));
+            if(img_raw == gt_raw) {
+                p.second = gt;
+                break;
+            }
+        }
+        out.push_back(p);
+    }
+    return out;
+}
+vector<pair<string,string>> getNames(const string& imagePath, const string& gtPath){
+    vector<string> img_names;
+    vector<string> gt_names;
+    DIR *dir;
+    struct dirent *ent;
+
+    if ((dir = opendir (imagePath.c_str())) != nullptr) {
+        while ((ent = readdir (dir)) != nullptr)
+            if (ent->d_type == DT_REG)
+                img_names.emplace_back(ent->d_name);
+        closedir (dir);
+    }
+    else {
+        // could not open directory
+        cerr << "could not open the images directory";
+        exit(1);
+    }
+
+    if ((dir = opendir (gtPath.c_str())) != nullptr) {
+        while ((ent = readdir (dir)) != nullptr)
+            if (ent->d_type == DT_REG)
+                gt_names.emplace_back(ent->d_name);
+        closedir (dir);
+    }
+    else {
+        // could not open directory
+        cerr << "could not open the ground truth directory";
+        exit(1);
+    }
+
+    return pairFiles(img_names, gt_names);
 }
