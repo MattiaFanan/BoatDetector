@@ -12,19 +12,22 @@
 #include <Hungarian.h>
 #include <utility>
 #include <dirent.h>
+#include <chrono>
 
 
 using namespace cv;
 using namespace std;
 using namespace ximgproc;
 using namespace dnn;
+using namespace chrono;
 
 vector<Rect> removeDuplicates(const vector<Rect> &input, double dimensionSlackPerc);
 bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
 vector<Rect> parseFile(const string& fileName);
 double IoU(const Rect &r1, const Rect &r2);
 double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
-vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector);
+vector<Rect> detect(const Mat& img, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector);
+vector<Rect> classify(const Mat& img, Net net, const vector<Rect>& ROIs);
 vector<pair<string,string>> pairFiles(const vector<string>& image_names, const vector<string>& gt_names);
 vector<pair<string,string>> getNames(const string& imagePath, const string& gtPath);
 
@@ -58,7 +61,15 @@ int main(int argc, char *argv[]) {
 
         //detect
         Mat img = imread(imgPath + name.first);
-        vector<Rect> ROIs = detect(img, net, edgeDetector, boxesDetector);
+        steady_clock::time_point start = steady_clock::now();
+        vector<Rect> ROIs = detect(img, edgeDetector, boxesDetector);
+        ulong detectTime = duration_cast<milliseconds>(steady_clock::now() - start).count();
+
+        //classify
+        start = steady_clock::now();
+        ROIs = classify(img, net, ROIs);
+        ulong classifyTime = duration_cast<milliseconds>(steady_clock::now() - start).count();
+
         //read ground truth
         vector<Rect> groundTruth;
         if(!name.second.empty())
@@ -76,6 +87,7 @@ int main(int argc, char *argv[]) {
         }
 
         cout << name.first << " got an IoU score of " << IoUScore(groundTruth, ROIs) << endl;
+        cout << "detection takes " << detectTime << " [ms] / classification takes " << classifyTime << " [ms]" << endl;
 
         resize(img, img, Size(scrn->width - 100, scrn->height - 100));
         imshow("detection", img);
@@ -200,7 +212,7 @@ double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection) 
 }
 
 
-vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector){
+vector<Rect> detect(const Mat& img, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector){
     vector<Rect> ROIs;
     Mat tmp;
     //normalize and copy img
@@ -219,12 +231,16 @@ vector<Rect> detect(const Mat& img, Net net, const Ptr<StructuredEdgeDetection>&
     double dimensionSlackPerc = 0.05;
     ROIs = removeDuplicates(ROIs, dimensionSlackPerc);
 
+    return ROIs;
+}
+
+vector<Rect> classify(const Mat& img, Net net, const vector<Rect>& ROIs){
     //classification
     vector<float> scores;
     for(const Rect& ROI : ROIs){
-        Mat input = tmp(ROI);
+        Mat input = img(ROI);
         vector<Mat> out;
-        input = blobFromImage(input,1.0,Size(100,100),Scalar(),false,false,CV_32F);
+        input = blobFromImage(input,1.0/255.0,Size(100,100),Scalar(),false,false,CV_32F);
         net.setInput(input);
         net.forward(out);
         scores.push_back(out.at(0).at<float>(0,0));
