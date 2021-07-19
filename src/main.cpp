@@ -51,12 +51,14 @@ int main(int argc, char *argv[]) {
     net.setPreferableTarget(DNN_TARGET_CPU);
     //read edge detector
     Ptr<StructuredEdgeDetection> edgeDetector = createStructuredEdgeDetection("../../EdgeModel/model.yml.gz");
-    //build edgebox
+    //build edgeboxes
     Ptr<EdgeBoxes> boxesDetector = createEdgeBoxes();
 
     //get pairs of image,ground truth files
     vector<pair<string,string>> names= getNames(imgPath, gtPath);
-
+    vector<double> iou_scores;
+    ulong tot = names.size();
+    int curr = 0;
     for(auto& name : names) {
 
         //detect
@@ -86,13 +88,20 @@ int main(int argc, char *argv[]) {
             rectangle(img, ROI, colorGT, 2);
         }
 
-        cout << name.first << " got an IoU score of " << IoUScore(groundTruth, ROIs) << endl;
+        double score = IoUScore(groundTruth, ROIs);
+        iou_scores.push_back(score);
+        cout << curr++ << "/" << tot << " " << name.first << " got an IoU score of " << score << endl;
         cout << "detection takes " << detectTime << " [ms] / classification takes " << classifyTime << " [ms]" << endl;
-
+        /*
         resize(img, img, Size(scrn->width - 100, scrn->height - 100));
         imshow("detection", img);
         waitKey(0);
+         */
     }
+    double sum=0;
+    for(auto val : iou_scores)
+        sum += val;
+    cout << "the average IoU score is: " << sum/double(tot) << endl;
 
     return 0;
 }
@@ -166,7 +175,7 @@ vector<Rect> parseFile(const string& fileName){
             exit(1);
         }
         //0 xmin; 1 xmax; 2 ymin; 3 ymax
-        ROIs.emplace_back(num[0],num[2], num[1] - num[0] + 1,num[3] - num[2] + 1);
+        ROIs.emplace_back(num[0],num[2], num[1] - num[0],num[3] - num[2]);
 
     }
     inFile.close();
@@ -174,15 +183,8 @@ vector<Rect> parseFile(const string& fileName){
 }
 
 double IoU(const Rect &r1, const Rect &r2){
-    //determine the (x, y)-coordinates of the intersection rectangle
-    int xA = max(r1.tl().x, r2.tl().x);
-    int yA = max(r1.tl().y, r2.tl().y);
-    int xB = min(r1.br().x, r2.br().x);
-    int yB = min(r1.br().y, r2.br().y);
-    //compute the area of intersection rectangle
-    int interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1);
-
-    return interArea / ( r1.area() + r2.area() - interArea + 1.0e-16);
+    Rect intersect = r1 & r2;
+    return intersect.area() / ( r1.area() + r2.area() - intersect.area() + 1.0e-16);
 }
 
 double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection) {
