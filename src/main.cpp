@@ -25,7 +25,7 @@ vector<Rect> removeDuplicates(const vector<Rect> &input, double dimensionSlackPe
 bool areSimilarRects(const Rect &r1, const Rect &r2, double dimensionSlackPerc);
 vector<Rect> parseFile(const string& fileName);
 double IoU(const Rect &r1, const Rect &r2);
-double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
+tuple<double, ulong, ulong, ulong> IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection);
 vector<Rect> detect(const Mat& img, const Ptr<StructuredEdgeDetection>& edgeDetector, const Ptr<EdgeBoxes>& boxesDetector);
 vector<Rect> classify(const Mat& img, Net net, const vector<Rect>& ROIs);
 vector<pair<string,string>> pairFiles(const vector<string>& image_names, const vector<string>& gt_names);
@@ -88,15 +88,20 @@ int main(int argc, char *argv[]) {
             rectangle(img, ROI, colorGT, 2);
         }
 
-        double score = IoUScore(groundTruth, ROIs);
+        double score;
+        ulong tp, fp, fn;
+        tie(score, tp, fp, fn) = IoUScore(groundTruth, ROIs);
         iou_scores.push_back(score);
-        cout << curr++ << "/" << tot << " " << name.first << " got an IoU score of " << score << endl;
-        cout << "detection takes " << detectTime << " [ms] / classification takes " << classifyTime << " [ms]" << endl;
-        /*
+        cout << "progress:" <<curr++ << "/" << tot << ", file:" << name.first << ", IoU score:" << score
+        << ", tp:" << tp << ", fp:" << fp << ", fn:" << fn
+        << ", detection_time:" << detectTime << "[ms], classification_time:" << classifyTime << "[ms]" << endl;
+
+
         resize(img, img, Size(scrn->width - 100, scrn->height - 100));
         imshow("detection", img);
         waitKey(0);
-         */
+
+
     }
     double sum=0;
     for(auto val : iou_scores)
@@ -187,30 +192,40 @@ double IoU(const Rect &r1, const Rect &r2){
     return intersect.area() / ( r1.area() + r2.area() - intersect.area() + 1.0e-16);
 }
 
-double IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection) {
-    //Mat pairIoU = Mat(static_cast<int>(groundTruth.size()), static_cast<int>(detection.size()), CV_32F);
+tuple<double, ulong, ulong, ulong> IoUScore(const vector<Rect> &groundTruth, const vector<Rect> &detection) {
+    // cost , intersections, fp, fn
     if (groundTruth.empty())
-        return 0;
-
-    int dim = static_cast<int>(max(groundTruth.size(), detection.size()));
+        return make_tuple(0,0,detection.size(),0);
 
     vector<vector<double>> costs;
-    for (int i = 0; i < dim; i++) {
+    for (auto& gt : groundTruth) {
         vector<double> gtCosts;
-        for (int j = 0; j < dim; j++) {
-            if (i < groundTruth.size() && j < detection.size())
-                gtCosts.push_back(1.0 - IoU(groundTruth[i], detection[j]));
-            else
-                gtCosts.push_back(1.0);
-        }
+        for (auto& dt :detection)
+            gtCosts.push_back(1.0 - IoU(gt, dt));
         costs.push_back(gtCosts);
     }
 
     vector<int> assignments;
     HungarianAlgorithm HungAlgo;
-    double sum = HungAlgo.Solve(costs, assignments);
-    sum = 1 - sum / dim;
-    return sum;
+    HungAlgo.Solve(costs, assignments);
+
+    // true and false positives
+    ulong intersections = 0;
+    double sum = 0;
+    for(int i = 0; i < groundTruth.size(); i++)
+        if(assignments[i]>=0) {
+            double cost = costs[i][assignments[i]];
+            if (cost < 1) {
+                intersections++;
+                sum += 1 - cost;
+            }
+        }
+
+    ulong fp = detection.size() - intersections;
+    ulong fn = groundTruth.size() - intersections;
+
+    sum = sum / static_cast<double>(max(groundTruth.size(), detection.size()));
+    return make_tuple(sum, intersections, fp, fn);
 }
 
 
