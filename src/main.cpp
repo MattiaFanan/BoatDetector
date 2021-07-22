@@ -96,10 +96,12 @@ int main(int argc, char *argv[]) {
         << ", tp:" << tp << ", fp:" << fp << ", fn:" << fn
         << ", detection_time:" << detectTime << "[ms], classification_time:" << classifyTime << "[ms]" << endl;
 
-
+        /*
         resize(img, img, Size(scrn->width - 100, scrn->height - 100));
         imshow("detection", img);
         waitKey(0);
+         */
+
 
 
     }
